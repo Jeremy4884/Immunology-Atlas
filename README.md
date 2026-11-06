@@ -1,11 +1,16 @@
 # 🔬 Immunology Atlas & Tumor POV 🎮
 
+[![Live Demo](https://img.shields.io/badge/🎮%20Play%20Online-GitHub%20Pages-success?style=for-the-badge&logo=github)](https://jeremy4884.github.io/Immunology-Atlas/)
+
 [![React](https://img.shields.io/badge/React-18.x-61dafb?logo=react&logoColor=black)](https://reactjs.org/)
 [![Three.js](https://img.shields.io/badge/Three.js-r160-black?logo=three.js)](https://threejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.x-646cff?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![AlphaFold](https://img.shields.io/badge/AlphaFold-Database-0284c7)](https://alphafold.ebi.ac.uk/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+> 🎮 **Live Web Version:** [https://jeremy4884.github.io/Immunology-Atlas/](https://jeremy4884.github.io/Immunology-Atlas/)  
+> เปิดเล่นหรือสำรวจโมเดล 3D ได้ทันทีผ่านเบราว์เซอร์ ไม่ต้องติดตั้งอะไรเพิ่มเติม!
 
 An interactive, scientific **3D Immunology Atlas** designed like a high-tech "3D Pokédex" for the human immune system — paired with a built-in **Tumor POV First-Person Shooter (CS-Style)** minigame where you pilot immune cells to battle inside the tumor microenvironment!
 
