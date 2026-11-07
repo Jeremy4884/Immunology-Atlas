@@ -408,14 +408,234 @@ kbd {
 .help-warn { font-size: 11px; color: #b45309; background: #fffbeb; padding: 7px 10px; border-radius: 10px; margin: 8px 0 0 !important; }
 
 /* ───────── Responsive ───────── */
-@media (max-width: 1180px) {
+@media (min-width: 901px) {
+  .mobile-header,
+  .mobile-nav {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 901px) {
   .app { grid-template-columns: 240px minmax(0, 1fr) 340px; }
   .functions { grid-template-columns: 1fr; }
 }
+
 @media (max-width: 900px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: auto 60vh auto; height: auto; overflow: visible; }
-  .sidebar { max-height: 260px; border-right: none; border-bottom: 1px solid var(--line); }
-  .data-panel { border-left: none; overflow: visible; }
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+    padding-bottom: 56px; /* space for mobile-nav */
+  }
+
+  /* Mobile Top Header */
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+    flex: none;
+    z-index: 20;
+  }
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .mobile-lens {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px var(--line), var(--shadow-sm);
+    display: grid;
+    place-items: center;
+    flex: none;
+  }
+  .mobile-lens span {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff 0 12%, var(--cell) 40%, var(--accent) 100%);
+    box-shadow: 0 0 10px var(--cell);
+  }
+  .mobile-title-wrap {
+    min-width: 0;
+  }
+  .mobile-title-wrap .eyebrow {
+    font-size: 9.5px;
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+  .mobile-name {
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.01em;
+  }
+
+  .mobile-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+  .mobile-arrows {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--soft);
+    padding: 2px;
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .arrow-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    color: var(--ink-2);
+    background: transparent;
+    transition: background 0.15s;
+  }
+  .arrow-btn:active {
+    background: #fff;
+    box-shadow: var(--shadow-sm);
+  }
+  .mobile-pov {
+    padding: 6px 12px;
+    font-size: 11.5px;
+  }
+
+  /* Show only active tab content */
+  .app .sidebar,
+  .app .stage,
+  .app .data-panel {
+    display: none !important;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .app[data-tab="viewer"] .stage {
+    display: flex !important;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .app[data-tab="data"] .data-panel {
+    display: block !important;
+    flex: 1;
+    overflow-y: auto;
+    border-left: none;
+    padding: 14px 14px 24px;
+    background: #fff;
+  }
+  .app[data-tab="list"] .sidebar {
+    display: flex !important;
+    flex: 1;
+    overflow-y: auto;
+    border-right: none;
+    max-height: none;
+    padding: 14px 14px 24px;
+  }
+
+  /* Stage layout inside viewer tab on mobile */
+  .stage-head {
+    display: none; /* header info already in mobile-header */
+  }
+  .viewer {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+  .stage-foot {
+    padding: 8px 16px;
+    flex: none;
+  }
+  .stage-foot .hint-row {
+    display: none;
+  }
+  .mini-stats {
+    width: 100%;
+    justify-content: space-around;
+  }
+  .mini-stats > div {
+    text-align: center;
+  }
+
+  /* Bottom Navigation Bar */
+  .mobile-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    z-index: 100;
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.05);
+  }
+  .mobile-nav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--muted);
+    padding: 6px 14px;
+    border-radius: 10px;
+    transition: all 0.15s;
+    background: transparent;
+  }
+  .mobile-nav-btn .icon {
+    font-size: 17px;
+    line-height: 1;
+  }
+  .mobile-nav-btn.active {
+    color: var(--accent);
+    background: rgba(14, 165, 233, 0.08);
+  }
+
+  /* Data panel on mobile */
+  .data-panel .cards {
+    gap: 12px;
+  }
+  .data-panel .name-card {
+    padding: 16px;
+  }
+
+  /* Molecule panel (AlphaFold) on mobile */
+  .molecule-panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 85vh;
+    border-radius: 24px 24px 0 0;
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .mol-stage {
+    height: 260px;
+  }
 }
 
 /* ---------- Tumor POV game launch button ---------- */

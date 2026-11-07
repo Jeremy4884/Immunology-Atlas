@@ -85,5 +85,6 @@ export const sfx = {
     tone(440, 0.15, 'triangle', 0.2);
     setTimeout(() => tone(660, 0.2, 'triangle', 0.2), 160);
   },
+  jump: () => tone(200, 0.08, 'sine', 0.12, 350),
   empty: () => tone(1200, 0.03, 'square', 0.06),
 };

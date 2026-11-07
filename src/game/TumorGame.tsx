@@ -80,6 +80,12 @@ interface Game {
   vy: number;
   onGround: boolean;
   keys: Record<string, boolean>;
+  touchMove: { x: number; y: number };
+  touchLook: { dx: number; dy: number };
+  isSprinting: boolean;
+  requestJump: boolean;
+  requestReload: boolean;
+  requestBoost: boolean;
   time: number;
   hints: Set<string>;
   bob: number;
@@ -119,6 +125,8 @@ function newGame(w: Weapon): Game {
     tracers: Array.from({ length: MAX_TR }, () => ({ from: new THREE.Vector3(), to: new THREE.Vector3(), life: 0 })),
     trIdx: 0, particles: [], feed: [], msg: null, hitT: -9, critT: -9, hurtT: -9,
     recoil: 0, bloom: 0, flashT: 0, vel: new THREE.Vector3(), vy: 0, onGround: true, keys: {},
+    touchMove: { x: 0, y: 0 }, touchLook: { dx: 0, dy: 0 }, isSprinting: false,
+    requestJump: false, requestReload: false, requestBoost: false,
     time: 0, hints: new Set(), bob: 0, started: false,
   };
 }
@@ -845,6 +853,28 @@ function Logic({ game: g, weapon, cell, pillars, setHud, bump, onDead }: LogicPr
         startWave(1);
       }
 
+      // mobile actions
+      if (g.requestReload) {
+        g.requestReload = false;
+        startReload();
+      }
+      if (g.requestBoost) {
+        g.requestBoost = false;
+        useBoost();
+      }
+
+      // touch look (aiming)
+      if (g.touchLook && (g.touchLook.dx !== 0 || g.touchLook.dy !== 0)) {
+        tmp.e.setFromQuaternion(camera.quaternion, 'YXZ');
+        tmp.e.y -= g.touchLook.dx * 0.0035;
+        tmp.e.x -= g.touchLook.dy * 0.0035;
+        tmp.e.x = Math.max(-1.45, Math.min(1.45, tmp.e.x));
+        tmp.e.z = 0;
+        camera.quaternion.setFromEuler(tmp.e);
+        g.touchLook.dx = 0;
+        g.touchLook.dy = 0;
+      }
+
       // movement
       const k = g.keys;
       camera.getWorldDirection(tmp.fwd);
@@ -856,14 +886,24 @@ function Logic({ game: g, weapon, cell, pillars, setHud, bump, onDead }: LogicPr
       if (k.KeyS || k.ArrowDown) tmp.wish.sub(tmp.fwd);
       if (k.KeyD || k.ArrowRight) tmp.wish.add(tmp.right);
       if (k.KeyA || k.ArrowLeft) tmp.wish.sub(tmp.right);
-      const speed = k.ShiftLeft || k.ShiftRight ? 9.5 : 6.2;
-      if (tmp.wish.lengthSq() > 0) tmp.wish.normalize().multiplyScalar(speed);
+      if (g.touchMove && (g.touchMove.x !== 0 || g.touchMove.y !== 0)) {
+        tmp.wish.addScaledVector(tmp.fwd, g.touchMove.y);
+        tmp.wish.addScaledVector(tmp.right, g.touchMove.x);
+      }
+      const isSprint = k.ShiftLeft || k.ShiftRight || g.isSprinting;
+      const speed = isSprint ? 9.5 : 6.2;
+      if (tmp.wish.lengthSq() > 0) {
+        if (tmp.wish.lengthSq() > 1) tmp.wish.normalize();
+        tmp.wish.multiplyScalar(speed);
+      }
       g.vel.lerp(tmp.wish, 1 - Math.exp(-(g.onGround ? 12 : 3) * dt));
       camera.position.addScaledVector(g.vel, dt);
       g.bob += g.vel.length() * dt * 1.6;
-      if (k.Space && g.onGround) {
+      if ((k.Space || g.requestJump) && g.onGround) {
+        g.requestJump = false;
         g.vy = 7.2;
         g.onGround = false;
+        sfx.jump();
       }
       g.vy -= 22 * dt;
       camera.position.y += g.vy * dt;
@@ -1166,6 +1206,230 @@ function HudView({ hud, cell, weapon }: { hud: Hud; cell: Cell; weapon: Weapon }
   );
 }
 
+// ── Mobile Touch Controls ──────────────────────────────────
+function MobileControls({
+  game,
+  onPause,
+}: {
+  game: Game;
+  onPause: () => void;
+}) {
+  const [knob, setKnob] = useState({ x: 0, y: 0, active: false });
+  const [sprinting, setSprinting] = useState(false);
+  const lookTouchId = useRef<number | null>(null);
+  const lastLookPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const joyTouchId = useRef<number | null>(null);
+  const joyCenter = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const joyRef = useRef<HTMLDivElement>(null);
+
+  // Look zone handlers (aiming)
+  const onLookStart = (e: React.TouchEvent) => {
+    if (lookTouchId.current !== null) return;
+    const t = e.changedTouches[0];
+    lookTouchId.current = t.identifier;
+    lastLookPos.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const onLookMove = (e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (t.identifier === lookTouchId.current) {
+        const dx = t.clientX - lastLookPos.current.x;
+        const dy = t.clientY - lastLookPos.current.y;
+        lastLookPos.current = { x: t.clientX, y: t.clientY };
+        game.touchLook.dx += dx;
+        game.touchLook.dy += dy;
+        break;
+      }
+    }
+  };
+
+  const onLookEnd = (e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === lookTouchId.current) {
+        lookTouchId.current = null;
+        break;
+      }
+    }
+  };
+
+  // Virtual Joystick handlers (movement)
+  const handleJoyMove = (cx: number, cy: number) => {
+    const maxR = 46;
+    let dx = cx - joyCenter.current.x;
+    let dy = cy - joyCenter.current.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > maxR) {
+      dx = (dx / dist) * maxR;
+      dy = (dy / dist) * maxR;
+    }
+    setKnob({ x: dx, y: dy, active: true });
+    game.touchMove.x = dx / maxR;
+    game.touchMove.y = -dy / maxR;
+  };
+
+  const onJoyStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    if (joyTouchId.current !== null) return;
+    const t = e.changedTouches[0];
+    joyTouchId.current = t.identifier;
+    if (joyRef.current) {
+      const rect = joyRef.current.getBoundingClientRect();
+      joyCenter.current = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+    }
+    handleJoyMove(t.clientX, t.clientY);
+  };
+
+  const onJoyMove = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (t.identifier === joyTouchId.current) {
+        handleJoyMove(t.clientX, t.clientY);
+        break;
+      }
+    }
+  };
+
+  const onJoyEnd = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === joyTouchId.current) {
+        joyTouchId.current = null;
+        setKnob({ x: 0, y: 0, active: false });
+        game.touchMove.x = 0;
+        game.touchMove.y = 0;
+        break;
+      }
+    }
+  };
+
+  return (
+    <div className="touch-controls">
+      {/* Background touch drag surface for looking around */}
+      <div
+        className="touch-look-zone"
+        onTouchStart={onLookStart}
+        onTouchMove={onLookMove}
+        onTouchEnd={onLookEnd}
+        onTouchCancel={onLookEnd}
+      />
+
+      {/* Top Pause button */}
+      <button
+        className="touch-pause-btn"
+        onClick={onPause}
+        onTouchStart={(e) => {
+          e.stopPropagation();
+          onPause();
+        }}
+      >
+        ⏸️ Pause
+      </button>
+
+      {/* Virtual Joystick for movement */}
+      <div
+        ref={joyRef}
+        className={`touch-joystick ${knob.active ? 'active' : ''}`}
+        onTouchStart={onJoyStart}
+        onTouchMove={onJoyMove}
+        onTouchEnd={onJoyEnd}
+        onTouchCancel={onJoyEnd}
+      >
+        <div className="joystick-base">
+          <div className="joystick-arrow up">▲</div>
+          <div className="joystick-arrow down">▼</div>
+          <div className="joystick-arrow left">◀</div>
+          <div className="joystick-arrow right">▶</div>
+          <div
+            className="joystick-knob"
+            style={{
+              transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Action buttons cluster */}
+      <div className="touch-actions">
+        {/* Fire button */}
+        <button
+          className="touch-btn fire-btn"
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            game.trigger = true;
+            game.firedThisPress = false;
+          }}
+          onTouchEnd={(e) => {
+            e.stopPropagation();
+            game.trigger = false;
+          }}
+          onTouchCancel={(e) => {
+            e.stopPropagation();
+            game.trigger = false;
+          }}
+        >
+          🔥
+          <span>FIRE</span>
+        </button>
+
+        {/* Jump button */}
+        <button
+          className="touch-btn jump-btn"
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            game.requestJump = true;
+          }}
+        >
+          🦘
+          <span>JUMP</span>
+        </button>
+
+        {/* Sprint toggle button */}
+        <button
+          className={`touch-btn sprint-btn ${sprinting ? 'active' : ''}`}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            const next = !sprinting;
+            setSprinting(next);
+            game.isSprinting = next;
+          }}
+        >
+          ⚡
+          <span>{sprinting ? 'RUN' : 'WALK'}</span>
+        </button>
+
+        {/* Reload button */}
+        <button
+          className="touch-btn reload-btn"
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            game.requestReload = true;
+          }}
+        >
+          🔄
+          <span>RELOAD</span>
+        </button>
+
+        {/* Anti-PD-1 button */}
+        <button
+          className={`touch-btn boost-btn ${game.charges > 0 ? 'ready' : 'empty'}`}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            game.requestBoost = true;
+          }}
+        >
+          💉
+          <span>Q ({game.charges})</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Session (one life) ──────────────────────────────────────
 function GameSession({ cell, onExit, onRestart }: { cell: Cell; onExit: () => void; onRestart: () => void }) {
   const weapon = useMemo(() => weaponFor(cell), [cell]);
@@ -1177,14 +1441,37 @@ function GameSession({ cell, onExit, onRestart }: { cell: Cell; onExit: () => vo
   const [ver, setVer] = useState(0);
   const bump = useCallback(() => setVer((v) => v + 1), []);
 
+  const isTouch = useMemo(() => {
+    return (
+      typeof window !== 'undefined' &&
+      ('ontouchstart' in window || navigator.maxTouchPoints > 0 || window.innerWidth <= 900)
+    );
+  }, []);
+
   const lock = () => {
     sfx.unlock();
-    try {
-      controls.current?.lock();
-    } catch {
-      /* browser may throttle re-lock */
+    if (isTouch) {
+      game.state = 'playing';
+      setUi('playing');
+    } else {
+      try {
+        controls.current?.lock();
+      } catch {
+        game.state = 'playing';
+        setUi('playing');
+      }
     }
   };
+
+  const pauseGame = useCallback(() => {
+    game.trigger = false;
+    game.keys = {};
+    game.touchMove = { x: 0, y: 0 };
+    game.state = 'paused';
+    setUi('paused');
+    document.exitPointerLock?.();
+  }, [game]);
+
   const onDead = useCallback(() => {
     setUi('dead');
     document.exitPointerLock?.();
@@ -1217,26 +1504,29 @@ function GameSession({ cell, onExit, onRestart }: { cell: Cell; onExit: () => vo
         <Effects game={game} color={weapon.color} />
         <ViewModel game={game} weapon={weapon} cellColor={cell.shape.color} />
         <Logic game={game} weapon={weapon} cell={cell} pillars={pillars} setHud={setHud} bump={bump} onDead={onDead} />
-        <PointerLockControls
-          ref={controls}
-          selector="#__tumor_no_autolock__"
-          onLock={() => {
-            if (game.state === 'dead') return;
-            game.state = 'playing';
-            setUi('playing');
-          }}
-          onUnlock={() => {
-            game.trigger = false;
-            game.keys = {};
-            if (game.state === 'playing') {
-              game.state = 'paused';
-              setUi('paused');
-            }
-          }}
-        />
+        {!isTouch && (
+          <PointerLockControls
+            ref={controls}
+            selector="#__tumor_no_autolock__"
+            onLock={() => {
+              if (game.state === 'dead') return;
+              game.state = 'playing';
+              setUi('playing');
+            }}
+            onUnlock={() => {
+              game.trigger = false;
+              game.keys = {};
+              if (game.state === 'playing') {
+                game.state = 'paused';
+                setUi('paused');
+              }
+            }}
+          />
+        )}
       </Canvas>
 
       {hud && ui !== 'intro' && <HudView hud={hud} cell={cell} weapon={weapon} />}
+      {ui === 'playing' && isTouch && <MobileControls game={game} onPause={pauseGame} />}
 
       {ui === 'intro' && (
         <div className="g-overlay">
@@ -1274,19 +1564,32 @@ function GameSession({ cell, onExit, onRestart }: { cell: Cell; onExit: () => vo
               </div>
               <div className="g-box">
                 <span className="g-eyebrow">Controls</span>
-                <ul className="g-keys">
-                  <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</li>
-                  <li><kbd>Mouse</kbd> aim · <kbd>LMB</kbd> fire</li>
-                  <li><kbd>Shift</kbd> sprint · <kbd>Space</kbd> jump</li>
-                  <li><kbd>R</kbd> reload granules</li>
-                  <li><kbd>Q</kbd> anti-PD-1 (resets exhaustion)</li>
-                  <li><kbd>Esc</kbd> pause</li>
-                </ul>
+                {isTouch ? (
+                  <ul className="g-keys">
+                    <li>🕹️ <b>Left Joystick</b> move</li>
+                    <li>🎯 <b>Right Drag</b> aim camera</li>
+                    <li>🔥 <b>FIRE</b> shoot (hold / tap)</li>
+                    <li>🦘 <b>JUMP</b> · ⚡ <b>SPRINT</b></li>
+                    <li>🔄 <b>RELOAD</b> · 💉 <b>Anti-PD-1 (Q)</b></li>
+                    <li>⏸️ <b>Pause button</b> top-right</li>
+                  </ul>
+                ) : (
+                  <ul className="g-keys">
+                    <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</li>
+                    <li><kbd>Mouse</kbd> aim · <kbd>LMB</kbd> fire</li>
+                    <li><kbd>Shift</kbd> sprint · <kbd>Space</kbd> jump</li>
+                    <li><kbd>R</kbd> reload granules</li>
+                    <li><kbd>Q</kbd> anti-PD-1 (resets exhaustion)</li>
+                    <li><kbd>Esc</kbd> pause</li>
+                  </ul>
+                )}
                 <p className="g-note">◎ Aim for the <b>nucleus</b> (centre) for ×2 critical damage.</p>
               </div>
             </div>
             <div className="g-actions">
-              <button className="g-btn primary" onClick={lock}>▶ Click to deploy</button>
+              <button className="g-btn primary" onClick={lock}>
+                {isTouch ? '▶ Deploy on Mobile' : '▶ Click to deploy'}
+              </button>
               <button className="g-btn" onClick={onExit}>Back to Atlas</button>
             </div>
           </div>
